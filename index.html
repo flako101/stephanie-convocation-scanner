@@ -1,1 +1,242 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
 
+  <title>Stephanie's Convocation Scanner</title>
+
+  <script src="https://unpkg.com/html5-qrcode"></script>
+
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #101827;
+      color: white;
+      text-align: center;
+      padding: 20px;
+    }
+
+    .container {
+      max-width: 450px;
+      margin: auto;
+      background: #1e293b;
+      padding: 25px;
+      border-radius: 15px;
+    }
+
+    h2 {
+      color: #f5c76b;
+    }
+
+    input, button {
+      width: 100%;
+      padding: 14px;
+      margin-top: 12px;
+      box-sizing: border-box;
+      border-radius: 8px;
+      border: none;
+      font-size: 16px;
+    }
+
+    button {
+      background: #d6a94e;
+      font-weight: bold;
+      cursor: pointer;
+    }
+
+    #reader {
+      margin-top: 20px;
+    }
+
+    #result {
+      margin-top: 20px;
+      padding: 15px;
+      border-radius: 8px;
+      font-weight: bold;
+      background: #334155;
+    }
+
+    #stopButton {
+      background: #991b1b;
+      color: white;
+    }
+  </style>
+</head>
+
+<body>
+
+<div class="container">
+
+  <h2>STEPHANIE'S CONVOCATION</h2>
+
+  <p>Official Guest Verification System</p>
+
+  <input
+    type="password"
+    id="pin"
+    placeholder="Administrator PIN"
+    maxlength="6"
+    inputmode="numeric"
+  >
+
+  <button onclick="startScanner()">
+    START SCANNER
+  </button>
+
+  <button id="stopButton" onclick="stopScanner()" style="display:none">
+    STOP SCANNER
+  </button>
+
+  <div id="reader"></div>
+
+  <div id="result">
+    Awaiting QR scan...
+  </div>
+
+</div>
+
+<iframe name="responseFrame" id="responseFrame"
+  style="display:none"></iframe>
+
+<form id="checkinForm"
+  method="POST"
+  target="responseFrame"
+  style="display:none">
+
+  <input name="action" value="checkin">
+  <input name="token" id="formToken">
+  <input name="pin" id="formPin">
+
+</form>
+
+<script>
+
+const WEB_APP_URL = "https://script.google.com/macros/s/AKfycbxocAJ1_mQBsd9QDuTldf3Dtfc77OtjXI4jCXSk9MxduHUgy8AnH_auoraDj7eqs0H8zQ/exec";
+
+let scanner = null;
+let processing = false;
+
+const result = document.getElementById("result");
+
+function startScanner() {
+
+  const pin = document.getElementById("pin").value.trim();
+
+  if (!/^\d{6}$/.test(pin)) {
+    alert("Enter your 6-digit administrator PIN.");
+    return;
+  }
+
+  if (scanner) return;
+
+  if (typeof Html5Qrcode === "undefined") {
+    result.innerHTML = "Scanner library failed to load.";
+    return;
+  }
+
+  result.innerHTML = "Starting camera...";
+
+  scanner = new Html5Qrcode("reader");
+
+  scanner.start(
+    { facingMode: "environment" },
+    {
+      fps: 10,
+      qrbox: { width: 250, height: 250 }
+    },
+
+    function(decodedText) {
+
+      if (processing) return;
+
+      processing = true;
+
+      scanner.pause(true);
+
+      result.innerHTML = "Verifying invitation...";
+
+      document.getElementById("formToken").value = decodedText;
+      document.getElementById("formPin").value = pin;
+
+      document.getElementById("checkinForm").action = WEB_APP_URL;
+
+      document.getElementById("checkinForm").submit();
+
+      setTimeout(function() {
+        if (processing) {
+          result.innerHTML = "No response from server. Please try again.";
+          processing = false;
+          if (scanner) scanner.resume();
+        }
+      }, 15000);
+
+    }
+
+  ).then(function() {
+
+    document.getElementById("stopButton").style.display = "block";
+    result.innerHTML = "Camera ready. Scan a guest QR code.";
+
+  }).catch(function(error) {
+
+    result.innerHTML = "Camera error: " + error;
+    scanner = null;
+
+  });
+
+}
+
+window.addEventListener("message", function(event) {
+
+  if (event.source !== document.getElementById("responseFrame").contentWindow) {
+    return;
+  }
+
+  const response = event.data;
+
+  if (!response || response.type !== "SCANNER_RESULT") {
+    return;
+  }
+
+  const data = response.result;
+
+  result.innerHTML =
+    data.message +
+    (data.name ? "<br>" + data.name : "");
+
+  result.style.background = data.success ? "#166534" : "#991b1b";
+
+  processing = false;
+
+  setTimeout(function() {
+    if (scanner) {
+      scanner.resume();
+      result.style.background = "#334155";
+    }
+  }, 3000);
+
+});
+
+function stopScanner() {
+
+  if (!scanner) return;
+
+  scanner.stop().then(function() {
+
+    scanner.clear();
+    scanner = null;
+    processing = false;
+
+    document.getElementById("stopButton").style.display = "none";
+
+    result.innerHTML = "Scanner stopped.";
+
+  });
+
+}
+
+</script>
+
+</body>
+</html>
